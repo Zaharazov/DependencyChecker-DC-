@@ -46,3 +46,5 @@ go build main.go
 * https://docs.github.com/en/repositories/working-with-files/using-files/viewing-and-understanding-files#viewing-the-raw-version-of-a-file
 * https://pkg.go.dev/golang.org/x/mod/modfile
 * https://go.dev/ref/mod#module-versions
+* https://docs.github.com/ru/rest/git/trees?apiVersion=2022-11-28#get-a-tree
+* https://pkg.go.dev/strings#example-HasSuffix
