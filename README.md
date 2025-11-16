@@ -50,3 +50,5 @@ go build main.go
 * https://pkg.go.dev/strings
 * https://pkg.go.dev/io
 * https://pkg.go.dev/net/url
+* https://docs.gitlab.com/api/repositories
+* https://docs.gitlab.com/development/routing/
