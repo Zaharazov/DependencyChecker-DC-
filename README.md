@@ -47,4 +47,6 @@ go build main.go
 * https://pkg.go.dev/golang.org/x/mod/modfile
 * https://go.dev/ref/mod#module-versions
 * https://docs.github.com/ru/rest/git/trees?apiVersion=2022-11-28#get-a-tree
-* https://pkg.go.dev/strings#example-HasSuffix
+* https://pkg.go.dev/strings
+* https://pkg.go.dev/io
+* https://pkg.go.dev/net/url

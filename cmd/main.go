@@ -2,35 +2,41 @@ package main
 
 import (
 	checker "DependencyChecker-DC-/internal/domain/checker"
-	infrastructure "DependencyChecker-DC-/internal/infrastructure/github"
+	"DependencyChecker-DC-/internal/domain/dependency"
+	"DependencyChecker-DC-/internal/domain/gomod"
+	"DependencyChecker-DC-/internal/infrastructure/github"
+	"DependencyChecker-DC-/internal/infrastructure/gitlab"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
-	"strings"
 
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/semver"
 )
 
-func CheckGoModByPath(source, f string, checker checker.RepoChecker) error {
+func checkGoModByPath(source, f string, checker checker.RepoChecker) (*gomod.GoModInfo, int, error) {
+
+	errors := 0
+
 	data, err := checker.GetGoModFile(source, f)
 
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 
 	bodyStruct, err := modfile.Parse("go.mod", data, nil)
 	if err != nil {
-		return err
+		return nil, 0, err
 	}
 
-	fmt.Println()
-	fmt.Println("| Module Name:", bodyStruct.Module.Mod.Path)
-	fmt.Println("|-------------------------------------------------------")
-	fmt.Println("| Go Version:", bodyStruct.Go.Version)
-	fmt.Println("|-------------------------------------------------------")
-	canBeUpdated := false
+	fileInfo := &gomod.GoModInfo{
+		Path:         bodyStruct.Module.Mod.Path,
+		GoVersion:    bodyStruct.Go.Version,
+		Dependencies: []dependency.DependencyInfo{},
+	}
+
 	for _, req := range bodyStruct.Require {
 
 		var actual struct {
@@ -40,25 +46,41 @@ func CheckGoModByPath(source, f string, checker checker.RepoChecker) error {
 		actualData := exec.Command("go", "list", "-m", "-json", req.Mod.Path+"@latest")
 		output, err := actualData.Output()
 		if err != nil {
-			fmt.Println("| Error:", err)
+			errors++
 			continue
 		}
 		err = json.Unmarshal(output, &actual)
 		if err != nil {
-			fmt.Println("| Error:", err)
+			errors++
 			continue
 		}
 
 		if semver.Compare(req.Mod.Version, actual.Version) == -1 {
-			fmt.Println("| Can Be Updated:", req.Mod.Path, "(", req.Mod.Version, "->", actual.Version, ")")
-			canBeUpdated = true
+			fileInfo.Dependencies = append(fileInfo.Dependencies, dependency.DependencyInfo{
+				Name:        req.Mod.Path,
+				CurVersion:  req.Mod.Version,
+				LastVersion: actual.Version,
+			})
 		}
 	}
-	if !canBeUpdated {
-		fmt.Println("| There Are No Possible Updates!")
+
+	return fileInfo, errors, nil
+}
+
+func determineChecker(source string) (checker.RepoChecker, error) {
+	u, err := url.Parse(source)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	switch u.Host {
+	case "github.com":
+		return github.GitHubChecker{}, nil
+	case "gitlab.com":
+		return gitlab.GitLabChecker{}, nil
+	default:
+		return nil, fmt.Errorf("Host Not Supported: %s", u.Host)
+	}
 }
 
 func main() {
@@ -70,20 +92,10 @@ func main() {
 	}
 
 	source := os.Args[1]
+	checker, err := determineChecker(source)
 
-	parts := strings.Split(source, "/")
-
-	if len(parts) < 5 {
-		fmt.Println()
-		fmt.Println("| Usage (example): ./main https://github.com/{owner}/{repo}")
-		return
-	}
-
-	var checker checker.RepoChecker
-	if parts[2] == "github.com" {
-		checker = infrastructure.GitHubChecker{}
-	} else {
-		fmt.Println("| Will Be Available In The Future!")
+	if err != nil {
+		fmt.Println("| Error:", err)
 		return
 	}
 
@@ -100,9 +112,28 @@ func main() {
 	}
 
 	for _, p := range paths {
-		err = CheckGoModByPath(source, p, checker)
+		result, errors, err := checkGoModByPath(source, p, checker)
 		if err != nil {
 			fmt.Println("| Error:", err)
+			continue
+		}
+
+		fmt.Println()
+		fmt.Println("| Module Name:", result.Path)
+		fmt.Println("|-------------------------------------------------------")
+		fmt.Println("| Go Version:", result.GoVersion)
+		fmt.Println("|-------------------------------------------------------")
+
+		if len(result.Dependencies) == 0 {
+			fmt.Println("| There Are No Possible Updates!")
+		} else {
+			for _, d := range result.Dependencies {
+				fmt.Println("| Can Be Updated:", d.Name, "(", d.CurVersion, "->", d.LastVersion, ")")
+			}
+		}
+
+		if errors > 0 {
+			fmt.Println("| Not Processed Due To Errors:", errors)
 		}
 	}
 
